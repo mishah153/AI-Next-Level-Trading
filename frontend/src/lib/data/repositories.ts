@@ -2,6 +2,8 @@
  * Server-safe data access. Each function returns the same frontend view model
  * whether sourced from the live API (USE_API) or the bundled mock fixtures.
  * Screens depend on these repositories, not on the data source directly.
+ * When the live API is unreachable (cold start) or denies access, public
+ * screens degrade to the mock fixtures instead of failing the render.
  */
 import { USE_API } from "../api/config";
 import { publicApi } from "../api/services";
@@ -24,39 +26,43 @@ import {
   whaleTransactions as mockWhales,
 } from "../mock/data";
 
-export async function getInstruments(): Promise<Instrument[]> {
-  return USE_API ? publicApi.instruments() : mockInstruments;
-}
-
-export async function getInstrument(symbol: string): Promise<Instrument> {
-  return USE_API ? publicApi.instrument(symbol) : mockGetInstrument(symbol);
-}
-
-export async function getSignals(): Promise<Signal[]> {
-  return USE_API ? publicApi.signals() : mockSignals;
-}
-
-export async function getSignalById(id: string): Promise<Signal | undefined> {
-  if (!USE_API) return mockGetSignal(id);
+async function apiOrMock<T>(call: () => Promise<T>, mock: T): Promise<T> {
+  if (!USE_API) return mock;
   try {
-    return await publicApi.signal(id);
+    return await call();
   } catch {
-    return undefined;
+    return mock;
   }
 }
 
+export async function getInstruments(): Promise<Instrument[]> {
+  return apiOrMock(() => publicApi.instruments(), mockInstruments);
+}
+
+export async function getInstrument(symbol: string): Promise<Instrument> {
+  return apiOrMock(() => publicApi.instrument(symbol), mockGetInstrument(symbol));
+}
+
+export async function getSignals(): Promise<Signal[]> {
+  return apiOrMock(() => publicApi.signals(), mockSignals);
+}
+
+export async function getSignalById(id: string): Promise<Signal | undefined> {
+  return apiOrMock(() => publicApi.signal(id), mockGetSignal(id));
+}
+
 export async function getWhales(): Promise<WhaleTransaction[]> {
-  return USE_API ? publicApi.whales() : mockWhales;
+  return apiOrMock(() => publicApi.whales(), mockWhales);
 }
 
 export async function getCandles(symbol: string): Promise<Candle[]> {
-  return USE_API ? publicApi.candles(symbol) : mockGetCandles(symbol);
+  return apiOrMock(() => publicApi.candles(symbol), mockGetCandles(symbol));
 }
 
 export async function getOrderBook(symbol: string): Promise<OrderBook> {
-  return USE_API ? publicApi.orderBook(symbol) : mockGetOrderBook(symbol);
+  return apiOrMock(() => publicApi.orderBook(symbol), mockGetOrderBook(symbol));
 }
 
 export async function getRecentTrades(symbol: string): Promise<RecentTrade[]> {
-  return USE_API ? publicApi.recentTrades(symbol) : mockGetRecentTrades(symbol);
+  return apiOrMock(() => publicApi.recentTrades(symbol), mockGetRecentTrades(symbol));
 }
