@@ -1,0 +1,285 @@
+// AINextLevelTrading — Prisma schema
+// PostgreSQL. Mirrors the frontend domain model.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum MarketKind {
+  crypto
+  stocks
+  forex
+}
+
+enum SignalAction {
+  BUY
+  SELL
+  SHORT
+  NEUTRAL
+}
+
+enum Sentiment {
+  bullish
+  bearish
+  neutral
+}
+
+enum SignalStatus {
+  active
+  triggered
+  expired
+  closed
+}
+
+enum WhaleTxType {
+  exchange_inflow
+  exchange_outflow
+  wallet_transfer
+  options_sweep
+  block_trade
+}
+
+enum PositionSide {
+  long
+  short
+}
+
+enum OrderSide {
+  buy
+  sell
+}
+
+enum OrderType {
+  market
+  limit
+  stop
+}
+
+enum OrderStatus {
+  open
+  filled
+  partial
+  canceled
+  rejected
+}
+
+enum ExecutionSource {
+  manual
+  automation
+}
+
+enum RiskProfile {
+  conservative
+  balanced
+  aggressive
+}
+
+enum ExchangeProvider {
+  binance
+  coinbase
+  kraken
+  alpaca
+  oanda
+}
+
+enum ConnectionStatus {
+  connected
+  disconnected
+  error
+}
+
+enum SubscriptionTier {
+  free
+  pro
+  elite
+}
+
+enum KycStatus {
+  unverified
+  pending
+  verified
+}
+
+model User {
+  id           String           @id @default(cuid())
+  email        String           @unique
+  passwordHash String
+  name         String
+  role         Role             @default(USER)
+  tier         SubscriptionTier @default(free)
+  riskProfile  RiskProfile      @default(balanced)
+  mfaEnabled   Boolean          @default(false)
+  kycStatus    KycStatus        @default(unverified)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  refreshTokens RefreshToken[]
+  connections   ExchangeConnection[]
+  strategies    AutomationStrategy[]
+  orders        Order[]
+  positions     Position[]
+
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Instrument {
+  id           String     @id @default(cuid())
+  symbol       String     @unique
+  name         String
+  market       MarketKind
+  price        Float
+  change24hPct Float
+  high24h      Float
+  low24h       Float
+  volume24hUsd Float
+  aiScore      Int
+  updatedAt    DateTime   @updatedAt
+
+  @@index([market])
+}
+
+model Signal {
+  id          String       @id @default(cuid())
+  symbol      String
+  name        String
+  market      MarketKind
+  action      SignalAction
+  confidence  Int
+  price       Float
+  targetPrice Float
+  stopLoss    Float
+  timeframe   String
+  status      SignalStatus @default(active)
+  summary     String
+  rationale   Json
+  backtest    Json
+  createdAt   DateTime     @default(now())
+
+  @@index([symbol])
+  @@index([action])
+  @@index([status])
+}
+
+model WhaleTransaction {
+  id                String      @id @default(cuid())
+  asset             String
+  market            MarketKind
+  type              WhaleTxType
+  amountUsd         Float
+  amountAsset       Float
+  fromLabel         String
+  toLabel           String
+  impact            Sentiment
+  aiInterpretation  String
+  linkedSignalId    String?
+  txRef             String?
+  timestamp         DateTime    @default(now())
+
+  @@index([asset])
+  @@index([impact])
+  @@index([timestamp])
+}
+
+model ExchangeConnection {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     ExchangeProvider
+  label        String
+  market       MarketKind
+  status       ConnectionStatus @default(connected)
+  balanceUsd   Float            @default(0)
+  apiKeyEnc    String
+  apiSecretEnc String
+  permissions  String[]
+  mfaEnabled   Boolean          @default(false)
+  connectedAt  DateTime?
+  createdAt    DateTime         @default(now())
+
+  strategies AutomationStrategy[]
+
+  @@index([userId])
+}
+
+model AutomationStrategy {
+  id              String              @id @default(cuid())
+  userId          String
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  description     String
+  scope           String // MarketKind | "all"
+  riskLevel       Int
+  spendingLimitUsd Float
+  enabled         Boolean             @default(false)
+  autoExecute     Boolean             @default(false)
+  connectionId    String?
+  connection      ExchangeConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  follows         String
+  stats           Json
+  createdAt       DateTime            @default(now())
+
+  @@index([userId])
+}
+
+model Position {
+  id                String          @id @default(cuid())
+  userId            String
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol            String
+  name              String
+  market            MarketKind
+  side              PositionSide
+  size              Float
+  entryPrice        Float
+  markPrice         Float
+  leverage          Int
+  liquidationPrice  Float
+  marginUsd         Float
+  unrealizedPnl     Float
+  unrealizedPnlPct  Float
+  source            ExecutionSource
+  openedAt          DateTime        @default(now())
+
+  @@index([userId])
+}
+
+model Order {
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol    String
+  market    MarketKind
+  side      OrderSide
+  type      OrderType
+  price     Float?
+  size      Float
+  filledPct Int             @default(0)
+  status    OrderStatus     @default(open)
+  source    ExecutionSource @default(manual)
+  createdAt DateTime        @default(now())
+
+  @@index([userId])
+  @@index([status])
+}

@@ -1,0 +1,62 @@
+# Render Blueprint — AINextLevelTrading (client review deployment)
+# Free tier: web services sleep after 15 min idle (first request wakes them, ~1 min),
+# free Postgres is valid for 30 days.
+
+databases:
+  - name: ainextlevel-db
+    plan: free
+    databaseName: ainextlevel
+    user: ainextlevel
+
+services:
+  # --- NestJS API (Docker) ---
+  - type: web
+    name: ainextlevel-api
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ainextlevel-db
+          property: connectionString
+      # Updated to the real frontend URL after first deploy.
+      - key: CORS_ORIGIN
+        value: https://ainextlevel-app.onrender.com
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_TTL
+        value: "900"
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_TTL
+        value: "1209600"
+      # 32-byte hex key for AES-256 (64 hex chars) — provided at deploy time, not stored in the repo.
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: THROTTLE_TTL
+        value: "60"
+      - key: THROTTLE_LIMIT
+        value: "120"
+
+  # --- Next.js frontend (Node) ---
+  - type: web
+    name: ainextlevel-app
+    runtime: node
+    rootDir: frontend
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: "22.16.0"
+      # Updated to the real API URL after first deploy (NEXT_PUBLIC_* is inlined at build time).
+      - key: NEXT_PUBLIC_API_URL
+        value: https://ainextlevel-api.onrender.com/api/v1
+      - key: NEXT_PUBLIC_USE_API
+        value: "true"

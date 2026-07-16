@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: nlt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ainextlevel
+    ports:
+      - '5432:5432'
+    volumes:
+      - nlt-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: nlt-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
+  backend:
+    build:
+      context: ./backend
+    container_name: nlt-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      CORS_ORIGIN: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/ainextlevel?schema=public
+      JWT_ACCESS_SECRET: change-me-access-secret-in-prod
+      JWT_ACCESS_TTL: 900
+      JWT_REFRESH_SECRET: change-me-refresh-secret-in-prod
+      JWT_REFRESH_TTL: 1209600
+      ENCRYPTION_KEY: 6f1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9
+      THROTTLE_TTL: 60
+      THROTTLE_LIMIT: 120
+    ports:
+      - '4000:4000'
+
+volumes:
+  nlt-pgdata:
